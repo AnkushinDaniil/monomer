@@ -76,9 +76,6 @@ func TestE2E(t *testing.T) {
 			t.Log(err)
 		},
 		NodeSelectiveListener: &node.SelectiveListener{
-			OnEngineHTTPServeErrCb: func(err error) {
-				require.NoError(t, err)
-			},
 			OnEngineWebsocketServeErrCb: func(err error) {
 				require.NoError(t, err)
 			},

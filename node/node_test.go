@@ -48,10 +48,10 @@ func TestRun(t *testing.T) {
 		mempooldb,
 		txdb,
 		&node.SelectiveListener{
-			OnEngineHTTPServeErrCb: func(err error) {
+			OnEngineWebsocketServeErrCb: func(err error) {
 				require.NoError(t, err)
 			},
-			OnEngineWebsocketServeErrCb: func(err error) {
+			OnCometServeErrCb: func(err error) {
 				require.NoError(t, err)
 			},
 		})

@@ -1,15 +1,8 @@
 package node
 
 type SelectiveListener struct {
-	OnEngineHTTPServeErrCb      func(error)
 	OnEngineWebsocketServeErrCb func(error)
 	OnCometServeErrCb           func(error)
-}
-
-func (s *SelectiveListener) OnEngineHTTPServeErr(err error) {
-	if s.OnEngineHTTPServeErrCb != nil {
-		s.OnEngineHTTPServeErrCb(err)
-	}
 }
 
 func (s *SelectiveListener) OnEngineWebsocketServeErr(err error) {

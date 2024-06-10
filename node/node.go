@@ -29,7 +29,6 @@ import (
 )
 
 type EventListener interface {
-	OnEngineHTTPServeErr(error)
 	OnEngineWebsocketServeErr(error)
 	OnCometServeErr(error)
 }
