@@ -44,6 +44,8 @@ const (
 	bucketHeaderByHeight dbBucket = iota + 1
 	bucketHeightByHash
 	bucketLabelHeight
+	bucketTxByHeightAndIndex
+	bucketTxByHash
 )
 
 var endian = binary.BigEndian
@@ -75,6 +77,9 @@ func (l *LocalDB) AppendUnsafeBlock(block *Block) (err error) {
 		if err := updateLabelHeight(b, eth.Unsafe, heightBytes); err != nil {
 			return err
 		}
+
+		//for i, tx := range block.Txs {
+		//}
 		// TODO index the transactions
 		return nil
 	})
