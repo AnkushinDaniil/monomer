@@ -3,13 +3,13 @@ package eth_test
 import (
 	"testing"
 
+	abcitypes "github.com/cometbft/cometbft/abci/types"
 	bfttypes "github.com/cometbft/cometbft/types"
 	opeth "github.com/ethereum-optimism/optimism/op-service/eth"
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/polymerdao/monomer"
-	"github.com/polymerdao/monomer/app/peptide/store"
+	"github.com/polymerdao/monomer/monomerdb"
 	"github.com/polymerdao/monomer/eth"
 	"github.com/polymerdao/monomer/testutils"
 	rolluptypes "github.com/polymerdao/monomer/x/rollup/types"
@@ -26,14 +26,15 @@ func TestChainId(t *testing.T) {
 }
 
 func TestGetBlockByNumber(t *testing.T) {
-	blockStore := store.NewBlockStore(testutils.NewMemDB(t))
+	blockStore := testutils.NewLocalMemDB(t)
 	block := &monomer.Block{
 		Header: &monomer.Header{
-			Hash: common.Hash{1},
+			HashCache: common.Hash{1},
 		},
+		Txs:     bfttypes.Txs([]bfttypes.Tx{{1}}),
+		Results: []*abcitypes.ExecTxResult{{}},
 	}
-	blockStore.AddBlock(block)
-	require.NoError(t, blockStore.UpdateLabel(opeth.Unsafe, block.Header.Hash))
+	require.NoError(t, blockStore.AppendUnsafeBlock(block))
 
 	tests := map[string]struct {
 		id   eth.BlockID
@@ -76,12 +77,12 @@ func TestGetBlockByNumber(t *testing.T) {
 					s := eth.NewBlock(blockStore)
 					got, err := s.GetBlockByNumber(test.id, includeTxs)
 					if test.want == nil {
-						require.ErrorIs(t, err, ethereum.NotFound)
+						require.ErrorContains(t, err, monomerdb.ErrNotFound.Error())
 						require.Nil(t, got)
 						return
 					}
 					require.NoError(t, err)
-					require.Equal(t, test.want.ToEthLikeBlock(ethTxs(t, block.Txs), includeTxs), got)
+					require.Equal(t, test.want.Header.ToEthLikeBlock(ethTxs(t, block.Txs), includeTxs), got)
 				})
 			}
 		})
@@ -89,13 +90,15 @@ func TestGetBlockByNumber(t *testing.T) {
 }
 
 func TestGetBlockByHash(t *testing.T) {
-	blockStore := store.NewBlockStore(testutils.NewMemDB(t))
+	blockStore := testutils.NewLocalMemDB(t)
 	block := &monomer.Block{
 		Header: &monomer.Header{
-			Hash: common.Hash{1},
+			HashCache: common.Hash{1},
 		},
+		Txs:     bfttypes.Txs([]bfttypes.Tx{{1}}),
+		Results: []*abcitypes.ExecTxResult{{}},
 	}
-	blockStore.AddBlock(block)
+	require.NoError(t, blockStore.AppendUnsafeBlock(block))
 
 	for description, inclTx := range map[string]bool{
 		"include txs": true,
@@ -104,9 +107,9 @@ func TestGetBlockByHash(t *testing.T) {
 		t.Run(description, func(t *testing.T) {
 			t.Run("block hash 1 exists", func(t *testing.T) {
 				e := eth.NewBlock(blockStore)
-				got, err := e.GetBlockByHash(block.Header.Hash, inclTx)
+				got, err := e.GetBlockByHash(block.Header.HashCache, inclTx)
 				require.NoError(t, err)
-				require.Equal(t, block.ToEthLikeBlock(ethTxs(t, block.Txs), inclTx), got)
+				require.Equal(t, block.Header.ToEthLikeBlock(ethTxs(t, block.Txs), inclTx), got)
 			})
 		})
 		t.Run("block hash 0 does not exist", func(t *testing.T) {
@@ -118,7 +121,7 @@ func TestGetBlockByHash(t *testing.T) {
 					e := eth.NewBlock(blockStore)
 					got, err := e.GetBlockByHash(common.Hash{}, inclTx)
 					require.Nil(t, got)
-					require.ErrorIs(t, err, ethereum.NotFound)
+					require.ErrorContains(t, err, monomerdb.ErrNotFound.Error())
 				})
 			}
 		})

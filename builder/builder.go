@@ -43,12 +43,12 @@ func New(
 	}
 }
 
+func (b *Builder) Rollback(ctx context.Context, head, safe, finalized common.Hash) error {
 // Rollback rolls back the block store, tx store, and application.
 // TODO does anything need to be done with the event bus?
 // assumptions:
 //   - all hashes exist in the block store.
 //   - finalized.Height <= safe.Height <= head.Height
-func (b *Builder) Rollback(ctx context.Context, head, safe, finalized common.Hash) error {
 	headBlock := b.blockStore.HeadBlock()
 	if headBlock == nil {
 		return errors.New("head block not found")
@@ -131,7 +131,7 @@ func (b *Builder) Build(ctx context.Context, payload *Payload) (*monomer.Block, 
 		ChainID:    b.chainID,
 		Height:     currentHeight + 1,
 		Time:       payload.Timestamp,
-		ParentHash: currentHead.Header.Hash,
+		ParentHash: currentHead.Header.HashCache,
 		AppHash:    info.GetLastBlockAppHash(),
 		GasLimit:   payload.GasLimit,
 	}

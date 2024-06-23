@@ -101,7 +101,7 @@ func (b *blockStore) AddBlock(block *monomer.Block) {
 	batch := b.db.NewBatch()
 	defer batch.Close()
 
-	hash := block.Hash() // It is important to calculate this before marshalling. Ensures all blocks have hashes set in the db.
+	hash := block.Header.Hash() // It is important to calculate this before marshalling. Ensures all blocks have hashes set in the db.
 	blockBytes, err := json.Marshal(block)
 	if err != nil {
 		panic(err)

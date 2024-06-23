@@ -50,9 +50,9 @@ type Header struct {
 	Time       uint64      `json:"time"`
 	ParentHash common.Hash `json:"parentHash"`
 	// state after txs from the *previous* block
-	AppHash  []byte      `json:"app_hash"`
-	GasLimit uint64      `json:"gasLimit"`
-	Hash     common.Hash `json:"hash"`
+	AppHash   []byte      `json:"app_hash"`
+	GasLimit  uint64      `json:"gasLimit"`
+	HashCache common.Hash `json:"hash"`
 }
 
 func (h *Header) ToComet() *bfttypes.Header {
@@ -65,46 +65,47 @@ func (h *Header) ToComet() *bfttypes.Header {
 }
 
 type Block struct {
-	Header *Header      `json:"header"`
-	Txs    bfttypes.Txs `json:"txs"`
+	Header  *Header                   `json:"header"`
+	Txs     bfttypes.Txs              `json:"txs"`
+	Results []*abcitypes.ExecTxResult `json:"results"`
 }
 
 // Hash returns a unique hash of the block, used as the block identifier
-func (b *Block) Hash() common.Hash {
-	if b.Header.Hash == (common.Hash{}) {
+func (h *Header) Hash() common.Hash {
+	if h.HashCache == (common.Hash{}) {
 		// We exclude the tx commitment.
 		// TODO better hashing technique than using Ethereum's.
-		b.Header.Hash = (&ethtypes.Header{
-			ParentHash:      b.Header.ParentHash,
-			Root:            common.BytesToHash(b.Header.AppHash), // TODO actually take the keccak
-			Number:          big.NewInt(b.Header.Height),
-			GasLimit:        b.Header.GasLimit,
+		h.HashCache = (&ethtypes.Header{
+			ParentHash:      h.ParentHash,
+			Root:            common.BytesToHash(h.AppHash), // TODO actually take the keccak
+			Number:          big.NewInt(h.Height),
+			GasLimit:        h.GasLimit,
 			MixDigest:       common.Hash{},
-			Time:            b.Header.Time,
+			Time:            h.Time,
 			UncleHash:       ethtypes.EmptyUncleHash,
 			ReceiptHash:     ethtypes.EmptyReceiptsHash,
 			BaseFee:         common.Big0,
 			WithdrawalsHash: &ethtypes.EmptyWithdrawalsHash,
 		}).Hash()
 	}
-	return b.Header.Hash
+	return h.HashCache
 }
 
 // This trick is played by the eth rpc server too. Instead of constructing
 // an actual eth block, simply create a map with the right keys so the client
 // can unmarshal it into a block
-func (b *Block) ToEthLikeBlock(txs ethtypes.Transactions, inclTxs bool) map[string]any {
+func (h *Header) ToEthLikeBlock(txs ethtypes.Transactions, inclTxs bool) map[string]any {
 	excessBlobGas := hexutil.Uint64(0)
 	blockGasUsed := hexutil.Uint64(0)
 	result := map[string]any{
 		// These are the ones that make sense to polymer.
-		"parentHash": b.Header.ParentHash,
-		"stateRoot":  common.BytesToHash(b.Header.AppHash),
-		"number":     (*hexutil.Big)(big.NewInt(b.Header.Height)),
-		"gasLimit":   hexutil.Uint64(b.Header.GasLimit),
+		"parentHash": h.ParentHash,
+		"stateRoot":  common.BytesToHash(h.AppHash),
+		"number":     (*hexutil.Big)(big.NewInt(h.Height)),
+		"gasLimit":   hexutil.Uint64(h.GasLimit),
 		"mixHash":    common.Hash{},
-		"timestamp":  hexutil.Uint64(b.Header.Time),
-		"hash":       b.Hash(),
+		"timestamp":  hexutil.Uint64(h.Time),
+		"hash":       h.Hash(),
 
 		// these are required fields that need to be part of the header or
 		// the eth client will complain during unmarshalling

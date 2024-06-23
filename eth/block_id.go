@@ -7,12 +7,12 @@ import (
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/polymerdao/monomer"
-	"github.com/polymerdao/monomer/app/peptide/store"
+	bfttypes "github.com/cometbft/cometbft/types"
 )
 
 type BlockID struct {
 	Label  eth.BlockLabel
-	Height int64
+	Height uint64
 }
 
 func (id *BlockID) UnmarshalJSON(data []byte) error {
@@ -29,14 +29,27 @@ func (id *BlockID) UnmarshalJSON(data []byte) error {
 		if err := height.UnmarshalText([]byte(dataStr)); err != nil {
 			return fmt.Errorf("unmarshal height as hexutil.Uint64: %v", err)
 		}
-		id.Height = int64(height)
+		id.Height = uint64(height)
 	}
 	return nil
 }
 
-func (id *BlockID) Get(s store.BlockStoreReader) *monomer.Block {
+type blockIDReader interface {
+	HeaderAndTxsByLabel(eth.BlockLabel) (*monomer.Header, bfttypes.Txs, error)
+	HeaderAndTxsByHeight(uint64) (*monomer.Header, bfttypes.Txs, error)
+}
+
+func (id *BlockID) Get(r blockIDReader) (*monomer.Header, bfttypes.Txs, error) {
 	if id.Label != "" {
-		return s.BlockByLabel(id.Label)
+		h, txs, err := r.HeaderAndTxsByLabel(id.Label)
+		if err != nil {
+			return nil, nil, fmt.Errorf("get header by label: %v", err)
+		}
+		return h, txs, nil
 	}
-	return s.BlockByNumber(id.Height)
+	h, txs, err := r.HeaderAndTxsByHeight(id.Height)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get header by height: %v", err)
+	}
+	return h, txs, nil
 }

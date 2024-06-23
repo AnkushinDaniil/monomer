@@ -343,7 +343,7 @@ func TestBlock(t *testing.T) {
 	block := &monomer.Block{
 		Header: &monomer.Header{
 			Height: 3,
-			Hash:   common.BytesToHash([]byte{1, 2, 3}),
+			HashCache:   common.BytesToHash([]byte{1, 2, 3}),
 		},
 	}
 	cometBlock := block.ToCometLikeBlock()

@@ -3,14 +3,13 @@ package eth
 import (
 	"fmt"
 
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/polymerdao/monomer/app/peptide/store"
+	bfttypes "github.com/cometbft/cometbft/types"
 	rolluptypes "github.com/polymerdao/monomer/x/rollup/types"
+	"github.com/polymerdao/monomer"
 )
 
-// var errBlockNotFound = errors.New("block not found") // the op-node checks for this exact string.
 type ChainID struct {
 	chainID *hexutil.Big
 }
@@ -25,36 +24,41 @@ func (e *ChainID) ChainId() *hexutil.Big { //nolint:stylecheck
 	return e.chainID
 }
 
-type Block struct {
-	blockStore store.BlockStoreReader
+type headerStoreReader interface {
+	blockIDReader
+	HeaderAndTxsByHash(common.Hash) (*monomer.Header, bfttypes.Txs, error)
 }
 
-func NewBlock(blockStore store.BlockStoreReader) *Block {
+type Block struct {
+	r headerStoreReader
+}
+
+func NewBlock(r headerStoreReader) *Block {
 	return &Block{
-		blockStore: blockStore,
+		r: r,
 	}
 }
 
 func (e *Block) GetBlockByNumber(id BlockID, inclTx bool) (map[string]any, error) {
-	b := id.Get(e.blockStore)
-	if b == nil {
-		return nil, ethereum.NotFound
+	h, txs, err := id.Get(e.r)
+	if err != nil {
+		return nil, err
 	}
-	txs, err := rolluptypes.AdaptCosmosTxsToEthTxs(b.Txs)
+	ethTxs, err := rolluptypes.AdaptCosmosTxsToEthTxs(txs)
 	if err != nil {
 		return nil, fmt.Errorf("adapt cosmos txs: %v", err)
 	}
-	return b.ToEthLikeBlock(txs, inclTx), nil
+	return h.ToEthLikeBlock(ethTxs, inclTx), nil
 }
 
 func (e *Block) GetBlockByHash(hash common.Hash, inclTx bool) (map[string]any, error) {
-	block := e.blockStore.BlockByHash(hash)
-	if block == nil {
-		return nil, ethereum.NotFound
+	h, txs, err := e.r.HeaderAndTxsByHash(hash)
+	if err != nil {
+		return nil, fmt.Errorf("header and txs by hash: %v", err)
 	}
-	txs, err := rolluptypes.AdaptCosmosTxsToEthTxs(block.Txs)
+	ethTxs, err := rolluptypes.AdaptCosmosTxsToEthTxs(txs)
 	if err != nil {
 		return nil, fmt.Errorf("adapt cosmos txs: %v", err)
 	}
-	return block.ToEthLikeBlock(txs, inclTx), nil
+	return h.ToEthLikeBlock(ethTxs, inclTx), nil
 }
