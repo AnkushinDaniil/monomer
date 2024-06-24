@@ -16,7 +16,11 @@ import (
 	"github.com/hashicorp/go-multierror"
 )
 
-var ErrNotFound = errors.New("not found")
+var (
+	ErrNotFound = errors.New("not found")
+
+	endian = binary.BigEndian
+)
 
 type DB struct {
 	db *pebble.DB
@@ -28,46 +32,22 @@ func New(db *pebble.DB) *DB {
 	}
 }
 
-type dbBucket byte
+// TODO: optimization - we can use a cbor encoder to write directly to a batch, rather than copying bytes twice.
+// TODO wrap errors properly
 
-const (
-	bucketHeaderByHeight dbBucket = iota + 1
-	bucketHeightByHash
-	bucketLabelHeight
-	bucketTxByHeightAndIndex
-	bucketTxHeightAndIndexByHash
-	bucketTxResultsByHeightAndIndex
-)
-
-var endian = binary.BigEndian
-
-// Key flattens a prefix and series of byte arrays into a single []byte.
-func (b dbBucket) Key(key ...[]byte) []byte {
-	return append([]byte{byte(b)}, slices.Concat(key...)...)
-}
-
-// NOTE
-// - There is an optimization here: we can use a cbor encoder to write directly to a batch, rather than copying bytes twice.
-// - another optimization is to use a pool for dbBucket.Key.
-//   - https://github.com/golang/go/issues/23199#issuecomment-406967375
-// - We can also make bucket keys more type safe by using separate types for each bucket.
-
-// AppendUnsafeBlock does no validity checks on the block.
-func (l *DB) AppendUnsafeBlock(block *monomer.Block) error {
+// AppendBlock does no validity checks on the block and does not update labels.
+func (db *DB) AppendBlock(block *monomer.Block) error {
 	headerBytes, err := cbor.Marshal(block.Header)
 	if err != nil {
 		return fmt.Errorf("marshal header cbor: %v", err)
 	}
 	heightBytes := marshalUint64(uint64(block.Header.Height))
-	return l.update(func(b *pebble.Batch) error {
+	return db.update(func(b *pebble.Batch) error {
 		if err := b.Set(bucketHeaderByHeight.Key(heightBytes), headerBytes, nil); err != nil {
 			return fmt.Errorf("set block by height: %v", err)
 		}
 		if err := b.Set(bucketHeightByHash.Key(block.Header.HashCache.Bytes()), heightBytes, nil); err != nil {
 			return fmt.Errorf("set height by hash: %v", err)
-		}
-		if err := updateLabelHeight(b, eth.Unsafe, heightBytes); err != nil {
-			return err
 		}
 
 		for i, tx := range block.Txs {
@@ -91,17 +71,9 @@ func (l *DB) AppendUnsafeBlock(block *monomer.Block) error {
 	})
 }
 
-func (l *DB) UpdateLabelHeight(label eth.BlockLabel, height uint64) (err error) {
-	return updateLabelHeight(l.db, label, marshalUint64(height))
-}
-
-type setter interface {
-	Set([]byte, []byte, *pebble.WriteOptions) error
-}
-
-func updateLabelHeight(s setter, label eth.BlockLabel, heightBytes []byte) error {
-	if err := s.Set(bucketLabelHeight.Key([]byte(label)), heightBytes, pebble.Sync); err != nil {
-		return fmt.Errorf("set label %q height: %v", label, err)
+func (db *DB) UpdateLabel(label eth.BlockLabel, hash common.Hash) error {
+	if err := db.db.Set(bucketLabelHeight.Key([]byte(label)), hash.Bytes(), pebble.Sync); err != nil {
+		return fmt.Errorf("%s: %v", label, err)
 	}
 	return nil
 }
@@ -137,8 +109,6 @@ func (l *DB) HeaderAndTxsByHeight(height uint64) (*monomer.Header, bfttypes.Txs,
 	}
 	return header, txs, nil
 }
-
-// TODO wrap errors properly
 
 func (l *DB) HeaderAndTxsByHash(hash common.Hash) (*monomer.Header, bfttypes.Txs, error) {
 	var header *monomer.Header

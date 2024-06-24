@@ -156,6 +156,7 @@ func (b *Builder) Build(ctx context.Context, payload *Payload) (*monomer.Block, 
 	block := &monomer.Block{
 		Header: header,
 		Txs:    txs,
+		// TODO: tx results
 	}
 
 	// Append block.

@@ -52,6 +52,7 @@ type Header struct {
 	// state after txs from the *previous* block
 	AppHash   []byte      `json:"app_hash"`
 	GasLimit  uint64      `json:"gasLimit"`
+	// TODO tx root?
 	HashCache common.Hash `json:"hash"`
 }
 
