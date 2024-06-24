@@ -8,12 +8,12 @@ import (
 	"slices"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/polymerdao/monomer"
 	bfttypes "github.com/cometbft/cometbft/types"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/hashicorp/go-multierror"
+	"github.com/polymerdao/monomer"
 )
 
 var (
@@ -35,22 +35,22 @@ func New(db *pebble.DB) *DB {
 // TODO: optimization - we can use a cbor encoder to write directly to a batch, rather than copying bytes twice.
 // TODO wrap errors properly
 
-// AppendBlock does no validity checks on the block and does not update labels.
-func (db *DB) AppendBlock(block *monomer.Block) error {
-	headerBytes, err := cbor.Marshal(block.Header)
+// AppendHeaderAndTxs does no validity checks on the block and does not update labels.
+func (db *DB) AppendHeaderAndTxs(header *monomer.Header, txs bfttypes.Txs) error {
+	headerBytes, err := cbor.Marshal(header)
 	if err != nil {
 		return fmt.Errorf("marshal header cbor: %v", err)
 	}
-	heightBytes := marshalUint64(uint64(block.Header.Height))
+	heightBytes := marshalUint64(uint64(header.Height))
 	return db.update(func(b *pebble.Batch) error {
 		if err := b.Set(bucketHeaderByHeight.Key(heightBytes), headerBytes, nil); err != nil {
 			return fmt.Errorf("set block by height: %v", err)
 		}
-		if err := b.Set(bucketHeightByHash.Key(block.Header.HashCache.Bytes()), heightBytes, nil); err != nil {
+		if err := b.Set(bucketHeightByHash.Key(header.HashCache.Bytes()), heightBytes, nil); err != nil {
 			return fmt.Errorf("set height by hash: %v", err)
 		}
 
-		for i, tx := range block.Txs {
+		for i, tx := range txs {
 			heightAndIndexBytes := slices.Concat(heightBytes, marshalUint64(uint64(i)))
 			if err := b.Set(bucketTxByHeightAndIndex.Key(heightAndIndexBytes), tx, nil); err != nil {
 				return fmt.Errorf("set tx by height and index: %v", err)
@@ -58,42 +58,51 @@ func (db *DB) AppendBlock(block *monomer.Block) error {
 			if err := b.Set(bucketTxHeightAndIndexByHash.Key(tx.Hash()), heightAndIndexBytes, nil); err != nil {
 				return fmt.Errorf("set tx height and index by hash: %v", err)
 			}
-
-			txResultBytes, err := block.Results[i].Marshal()
-			if err != nil {
-				return fmt.Errorf("marshal tx result: %v", err)
-			}
-			if err := b.Set(bucketTxResultsByHeightAndIndex.Key(heightAndIndexBytes), txResultBytes, nil); err != nil {
-				return fmt.Errorf("set tx result by height and index: %v", err)
-			}
 		}
 		return nil
 	})
 }
 
 func (db *DB) UpdateLabel(label eth.BlockLabel, hash common.Hash) error {
-	if err := db.db.Set(bucketLabelHeight.Key([]byte(label)), hash.Bytes(), pebble.Sync); err != nil {
+	if err := db.db.Set(bucketLabelHash.Key([]byte(label)), hash.Bytes(), pebble.Sync); err != nil {
 		return fmt.Errorf("%s: %v", label, err)
 	}
 	return nil
 }
 
-func (l *DB) RollbackToHeight(head, safe, finalized common.Hash) error {
-	panic("unimplemented")
+func (db *DB) Rollback(unsafe, safe, finalized common.Hash) error {
+	return db.updateIndexed(func(b *pebble.Batch) error {
+		unsafeHeightBytesValue, closer, err := get(b, bucketHeightByHash.Key(unsafe.Bytes()))
+		if err != nil {
+			return fmt.Errorf("get height by hash: %w", err)
+		}
+		unsafeHeight := endian.Uint64(unsafeHeightBytesValue)
+		if err := closer.Close(); err != nil {
+			return fmt.Errorf("close unsafeHeightBytesValue closer: %v", err)
+		}
+
+		// iterator to get hashes of removed headers
+
+		firstHeightBytesToDelete := marshalUint64(unsafeHeight + 1)
+		if err := b.DeleteRange(bucketHeaderByHeight.Key(firstHeightBytesToDelete), marshalUint64(uint64(bucketHeaderByHeight) + 1), nil); err != nil {
+			return fmt.Errorf("delete range of headers: %v", err)
+		}
+
+		// iterator to get hashes of removed txs
+
+		if err := b.DeleteRange(bucketTxHeightAndIndexByHash.Key(firstHeightBytesToDelete), marshalUint64(uint64(bucketTxHeightAndIndexByHash)+1), nil); err != nil {
+			return fmt.Errorf("delete range of txs: %v", err)
+		}
+
+		// update labels
+		return nil
+	})
 }
 
-func (l *DB) MempoolEnqueue(bfttypes.Tx) error {
-	panic("unimplemented")
-}
-
-func (l *DB) MempoolDequeue() (bfttypes.Tx, error) {
-	panic("unimplemented")
-}
-
-func (l *DB) HeaderAndTxsByHeight(height uint64) (*monomer.Header, bfttypes.Txs, error) {
+func (db *DB) HeaderAndTxsByHeight(height uint64) (*monomer.Header, bfttypes.Txs, error) {
 	var header *monomer.Header
 	var txs bfttypes.Txs
-	if err := l.view(func(s *pebble.Snapshot) (err error) {
+	if err := db.view(func(s *pebble.Snapshot) (err error) {
 		heightBytes := marshalUint64(height)
 		header, err = headerByHeight(s, heightBytes)
 		if err != nil {
@@ -110,15 +119,15 @@ func (l *DB) HeaderAndTxsByHeight(height uint64) (*monomer.Header, bfttypes.Txs,
 	return header, txs, nil
 }
 
-func (l *DB) HeaderAndTxsByHash(hash common.Hash) (*monomer.Header, bfttypes.Txs, error) {
+func (db *DB) HeaderAndTxsByHash(hash common.Hash) (*monomer.Header, bfttypes.Txs, error) {
 	var header *monomer.Header
 	var txs bfttypes.Txs
-	if err := l.view(func(s *pebble.Snapshot) (err error) {
+	if err := db.view(func(s *pebble.Snapshot) (err error) {
 		header, err = headerByHash(s, hash)
 		if err != nil {
 			return fmt.Errorf("get header by hash: %w", err)
 		}
-		txs, err = txsInRange(s, marshalUint64(uint64(header.Height)), marshalUint64(uint64(header.Height + 1)))
+		txs, err = txsInRange(s, marshalUint64(uint64(header.Height)), marshalUint64(uint64(header.Height+1)))
 		if err != nil {
 			return err
 		}
@@ -129,15 +138,15 @@ func (l *DB) HeaderAndTxsByHash(hash common.Hash) (*monomer.Header, bfttypes.Txs
 	return header, txs, nil
 }
 
-func (l *DB) HeaderAndTxsByLabel(label eth.BlockLabel) (*monomer.Header, bfttypes.Txs, error) {
+func (db *DB) HeaderAndTxsByLabel(label eth.BlockLabel) (*monomer.Header, bfttypes.Txs, error) {
 	var header *monomer.Header
 	var txs bfttypes.Txs
-	if err := l.view(func(s *pebble.Snapshot) (err error) {
-		header, err = headerByLabel(s, label)
+	if err := db.view(func(s *pebble.Snapshot) error {
+		header, err := headerByLabel(s, label)
 		if err != nil {
 			return fmt.Errorf("get header by label: %v", err)
 		}
-		txs, err = txsInRange(s, marshalUint64(uint64(header.Height)), marshalUint64(uint64(header.Height + 1)))
+		txs, err = txsInRange(s, marshalUint64(uint64(header.Height)), marshalUint64(uint64(header.Height+1)))
 		if err != nil {
 			return err
 		}
@@ -146,6 +155,34 @@ func (l *DB) HeaderAndTxsByLabel(label eth.BlockLabel) (*monomer.Header, bfttype
 		return nil, nil, err
 	}
 	return header, txs, nil
+}
+
+func (db *DB) HeaderByHash(hash common.Hash) (*monomer.Header, error) {
+	var header *monomer.Header
+	if err := db.view(func(s *pebble.Snapshot) error {
+		var err error
+		header, err = headerByHash(s, hash)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	return header, nil
+}
+
+func (db *DB) HeaderByLabel(label eth.BlockLabel) (*monomer.Header, error) {
+	var header *monomer.Header
+	if err := db.view(func(s *pebble.Snapshot) error {
+		var err error
+		header, err = headerByLabel(s, label)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	return header, nil
+}
+
+func (db *DB) HeaderByHeight(height uint64) (*monomer.Header, error) {
+	return headerByHeight(db.db, marshalUint64(height))
 }
 
 func txsInRange(s *pebble.Snapshot, startHeightBytes, endHeightBytes []byte) (_ bfttypes.Txs, err error) {
@@ -160,7 +197,7 @@ func txsInRange(s *pebble.Snapshot, startHeightBytes, endHeightBytes []byte) (_ 
 		err = wrapCloseErr(err, iter)
 	}()
 	var txs bfttypes.Txs
-	for ; iter.Valid(); iter.Next() {
+	for iter.First(); iter.Valid(); iter.Next() {
 		value, err := iter.ValueAndErr()
 		if err != nil {
 			return nil, fmt.Errorf("get value from iterator: %v", err)
@@ -170,10 +207,6 @@ func txsInRange(s *pebble.Snapshot, startHeightBytes, endHeightBytes []byte) (_ 
 		txs = append(txs, tx)
 	}
 	return txs, nil
-}
-
-func (l *DB) MempoolLen() (uint64, error) {
-	panic("unimplemented")
 }
 
 type getter interface {
@@ -197,7 +230,7 @@ func headerByHeight(g getter, heightBytes []byte) (_ *monomer.Header, err error)
 }
 
 func headerByLabel(s *pebble.Snapshot, label eth.BlockLabel) (_ *monomer.Header, err error) {
-	heightBytes, closer, err := get(s, bucketLabelHeight.Key([]byte(label)))
+	heightBytes, closer, err := get(s, bucketLabelHash.Key([]byte(label)))
 	if err != nil {
 		return nil, fmt.Errorf("get label height: %v", err)
 	}
@@ -232,6 +265,20 @@ func (l *DB) view(cb func(*pebble.Snapshot) error) (err error) {
 		err = wrapCloseErr(err, s)
 	}()
 	return cb(s)
+}
+
+func (l *DB) updateIndexed(cb func(*pebble.Batch) error) (err error) {
+	b := l.db.NewIndexedBatch()
+	defer func() {
+		err = wrapCloseErr(err, b)
+	}()
+	if err := cb(b); err != nil {
+		return err
+	}
+	if err := b.Commit(pebble.Sync); err != nil {
+		return fmt.Errorf("commit: %v", err)
+	}
+	return nil
 }
 
 func (l *DB) update(cb func(*pebble.Batch) error) (err error) {

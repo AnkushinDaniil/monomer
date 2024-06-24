@@ -69,7 +69,8 @@ func TestBlockIDGet(t *testing.T) {
 		Txs:     []bfttypes.Tx{{1}},
 		Results: []*abcitypes.ExecTxResult{{}},
 	}
-	require.NoError(t, blockStore.AppendUnsafeBlock(block))
+	require.NoError(t, blockStore.AppendBlock(block))
+	require.NoError(t, blockStore.UpdateLabel(opeth.Unsafe, block.Header.Hash()))
 
 	tests := map[string]struct {
 		id     eth.BlockID

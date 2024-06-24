@@ -53,6 +53,7 @@ type Header struct {
 	AppHash   []byte      `json:"app_hash"`
 	GasLimit  uint64      `json:"gasLimit"`
 	// TODO tx root?
+	// TODO receipt root?
 	HashCache common.Hash `json:"hash"`
 }
 

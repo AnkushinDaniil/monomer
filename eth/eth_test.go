@@ -27,14 +27,9 @@ func TestChainId(t *testing.T) {
 
 func TestGetBlockByNumber(t *testing.T) {
 	blockStore := testutils.NewLocalMemDB(t)
-	block := &monomer.Block{
-		Header: &monomer.Header{
-			HashCache: common.Hash{1},
-		},
-		Txs:     bfttypes.Txs([]bfttypes.Tx{{1}}),
-		Results: []*abcitypes.ExecTxResult{{}},
-	}
-	require.NoError(t, blockStore.AppendUnsafeBlock(block))
+	require.NoError(t, blockStore.AppendHeaderAndTxs(&monomer.Header{
+		HashCache: common.Hash{1},
+	}), bfttypes.Txs([]bfttypes.Tx{{1}}))
 
 	tests := map[string]struct {
 		id   eth.BlockID
@@ -90,7 +85,7 @@ func TestGetBlockByNumber(t *testing.T) {
 }
 
 func TestGetBlockByHash(t *testing.T) {
-	blockStore := testutils.NewLocalMemDB(t)
+	blockStore := testutils.NewPebbleMemDB(t)
 	block := &monomer.Block{
 		Header: &monomer.Header{
 			HashCache: common.Hash{1},

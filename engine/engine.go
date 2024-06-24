@@ -13,13 +13,13 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/polymerdao/monomer"
-	"github.com/polymerdao/monomer/app/peptide/store"
 	"github.com/polymerdao/monomer/builder"
 	rolluptypes "github.com/polymerdao/monomer/x/rollup/types"
 )
 
 type BlockStore interface {
-	store.BlockStoreReader
+	BlockByHash(hash common.Hash) *monomer.Block
+	HeadBlock() *monomer.Block
 	UpdateLabel(label eth.BlockLabel, hash common.Hash) error
 }
 

@@ -9,10 +9,9 @@ type dbBucket byte
 const (
 	bucketHeaderByHeight dbBucket = iota + 1
 	bucketHeightByHash
-	bucketLabelHeight
+	bucketLabelHash
 	bucketTxByHeightAndIndex
 	bucketTxHeightAndIndexByHash
-	bucketTxResultsByHeightAndIndex
 )
 
 // TODO: optimize the buckets with a buffer pool? We can improve type safety by using separate types for each bucket.
