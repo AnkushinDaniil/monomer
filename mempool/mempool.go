@@ -48,7 +48,7 @@ func (p *Pool) Enqueue(userTxn comettypes.Tx) error {
 	if err = p.putElem(batch, userTxn.Hash(), &storageElem{
 		Txn: userTxn,
 	}); err != nil {
-		return nil
+		return nil // ???
 	}
 
 	if tail != nil {

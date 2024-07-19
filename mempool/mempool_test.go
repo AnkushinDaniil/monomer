@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	comettypes "github.com/cometbft/cometbft/types"
+	dbm "github.com/cosmos/cosmos-db"
 	"github.com/polymerdao/monomer/mempool"
 	"github.com/polymerdao/monomer/testutils"
 	"github.com/stretchr/testify/assert"
@@ -65,3 +66,19 @@ func TestMempool(t *testing.T) {
 	_, err = pool.Dequeue()
 	require.Error(t, err)
 }
+
+func BenchmarkMempool(b *testing.B) {
+	pool := mempool.New(dbm.NewMemDB())
+	for i := 0; i < b.N; i++ {
+		for i := byte(0); i < 3; i++ {
+			pool.Enqueue(comettypes.Tx([]byte{i}))
+			pool.Len()
+		}
+		for i := 0; i < 3; i++ {
+			pool.Dequeue()
+			pool.Len()
+		}
+	}
+}
+
+// old: BenchmarkMempool-10        87466             13313 ns/op            7447 B/op        159 allocs/op
