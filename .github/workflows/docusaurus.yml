@@ -1,0 +1,34 @@
+name: docusaurus
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build Docusaurus
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read .nvmrc
+        run: echo "NODE_VERSION=$(cat ./doc/.nvmrc)" >> $GITHUB_ENV
+        id: nvm
+
+      - name: Use Node.js ${{ steps.nvm.outputs.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.nvm.outputs.NODE_VERSION }}
+
+      - name: Set up Yarn
+        working-directory: ./doc
+        run: corepack enable && corepack prepare yarn@4.3.1 --activate
+
+      - name: Install dependencies
+        working-directory: ./doc
+        run: yarn install --frozen-lockfile
+
+      - name: Build website
+        working-directory: ./doc
+        run: yarn build
