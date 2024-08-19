@@ -1,12 +1,8 @@
 # Dependencies
 /node_modules
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/sdks
-!.yarn/versions
+/.yarn
+.pnp.cjs
+.pnp.loader.mjs
 
 # Production
 /build
