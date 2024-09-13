@@ -314,9 +314,9 @@ func TestBuildRollupTxs(t *testing.T) {
 	require.NotNil(t, depositTxETH.Mint())
 	require.NotNil(t, depositTxETH.To(), "Deposit transaction must have a 'to' address")
 
-	to, err := gethtypes.NewLondonSigner(depositTxETH.ChainId()).Sender(depositTxETH)
+	from, err := gethtypes.NewLondonSigner(depositTxETH.ChainId()).Sender(depositTxETH)
 	require.NoError(t, err)
-	cosmAddr := utils.EvmToCosmosAddress(to)
+	cosmAddr := utils.EvmToCosmosAddress(from)
 	withdrawalTx := testapp.ToWithdrawalTx(
 		t,
 		cosmAddr.String(),
