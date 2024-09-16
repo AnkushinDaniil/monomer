@@ -44,6 +44,7 @@ func (s *KeeperTestSuite) SetupSubTest() {
 	sdkCtx := sdk.UnwrapSDKContext(s.ctx)
 	s.rollupStore = sdkCtx.KVStore(storeKey)
 	s.eventManger = sdkCtx.EventManager()
+	s.bankKeeper.EXPECT().SendCoins(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 }
 
 func (s *KeeperTestSuite) mockBurnETH() {
@@ -54,4 +55,5 @@ func (s *KeeperTestSuite) mockBurnETH() {
 func (s *KeeperTestSuite) mockMintETH() {
 	s.bankKeeper.EXPECT().MintCoins(gomock.Any(), types.ModuleName, gomock.Any()).Return(nil).AnyTimes()
 	s.bankKeeper.EXPECT().SendCoinsFromModuleToAccount(gomock.Any(), types.ModuleName, gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	s.bankKeeper.EXPECT().SendCoins(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 }
