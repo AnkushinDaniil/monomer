@@ -72,7 +72,8 @@ func (k *Keeper) processL1UserDepositTxs(ctx sdk.Context, txs [][]byte) (sdk.Eve
 		ctx.Logger().Debug("User deposit tx", "index", i, "tx", string(lo.Must(tx.MarshalJSON())))
 		// if the receipient is nil, it means the tx is creating a contract which we don't support, so return an error.
 		// see https://github.com/ethereum-optimism/op-geth/blob/v1.101301.0-rc.2/core/state_processor.go#L154
-		if tx.To() == nil {
+		to := tx.To()
+		if to == nil {
 			ctx.Logger().Error("Contract creation txs are not supported", "index", i)
 			return nil, types.WrapError(types.ErrInvalidL1Txs, "Contract creation txs are not supported, index:%d", i)
 		}
@@ -92,6 +93,21 @@ func (k *Keeper) processL1UserDepositTxs(ctx sdk.Context, txs [][]byte) (sdk.Eve
 			return nil, types.WrapError(types.ErrMintETH, "failed to mint ETH for cosmosAddress: %v; err: %v", cosmAddr, err)
 		}
 		mintEvents = append(mintEvents, *mintEvent)
+
+		// Handle Value transfer
+		value := tx.Value()
+		if value.Sign() > 0 {
+			toCosmAddr := utils.EvmToCosmosAddress(*to)
+			transferAmount := sdkmath.NewIntFromBigInt(value)
+
+			err := k.transferETH(&ctx, cosmAddr, toCosmAddr, transferAmount)
+			if err != nil {
+				ctx.Logger().Error("Failed to transfer ETH", "from", cosmAddr, "to", toCosmAddr, "amount", transferAmount, "err", err)
+				// Follow op-geth's approach and not revert the entire deposit
+				// Instead, keep the minted ETH in the sender's account
+				continue
+			}
+		}
 	}
 
 	return mintEvents, nil
@@ -115,4 +131,14 @@ func (k *Keeper) mintETH(ctx sdk.Context, addr sdk.AccAddress, amount sdkmath.In
 	)
 
 	return &mintEvent, nil
+}
+
+// transferETH transfers ETH from one account to another.
+func (k *Keeper) transferETH(ctx *sdk.Context, from, to sdk.AccAddress, amount sdkmath.Int) error {
+	coin := sdk.NewCoin(types.ETH, amount)
+	if err := k.bankkeeper.SendCoins(ctx, from, to, sdk.NewCoins(coin)); err != nil {
+		return fmt.Errorf("failed to transfer ETH from %s to %s: %v", from, to, err)
+	}
+
+	return nil
 }
