@@ -5,8 +5,8 @@ SCRIPTS_PATH ?= scripts
 BIN ?= bin
 
 E2E_ARTIFACTS_PATH ?= e2e/artifacts
-E2E_STATE_SETUP_PATH ?= e2e/optimism/.devnet
-E2E_CONFIG_SETUP_PATH ?= e2e/optimism/packages/contracts-bedrock/deploy-config/devnetL1.json
+E2E_STATE_SETUP_PATH ?= .devnet
+E2E_CONFIG_SETUP_PATH ?= .devnet/deploy-config/devnetL1.json
 FOUNDRY_ARTIFACTS_PATH ?= bindings/artifacts
 FOUNDRY_CACHE_PATH ?= bindings/cache
 
@@ -25,10 +25,10 @@ test-all:
 .PHONY: e2e
 e2e:
 	go test -v ./e2e \
-	-l1-allocs ./optimism/.devnet/allocs-l1.json \
-	-l2-allocs-dir ./optimism/.devnet/ \
-	-l1-deployments ./optimism/.devnet/addresses.json \
-	-deploy-config ./optimism/packages/contracts-bedrock/deploy-config/devnetL1.json
+	-l1-allocs ${E2E_STATE_SETUP_PATH}/allocs-l1.json \
+	-l2-allocs-dir ${E2E_STATE_SETUP_PATH}/ \
+	-l1-deployments ${E2E_STATE_SETUP_PATH}/addresses.json \
+	-deploy-config ${E2E_CONFIG_SETUP_PATH}
 
 .PHONY: install-golangci-lint
 install-golangci-lint:
