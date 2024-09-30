@@ -1,0 +1,23 @@
+name: build-docs
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          cache: yarn
+          node-version-file: docs/.nvmrc
+          cache-dependency-path: docs
+
+      - run: yarn install --frozen-lockfile
+        working-directory: docs
+      - run: yarn build
+        working-directory: docs

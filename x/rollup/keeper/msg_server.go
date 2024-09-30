@@ -2,7 +2,6 @@ package keeper
 
 import (
 	"context"
-	"encoding/json"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -10,17 +9,7 @@ import (
 	"github.com/samber/lo"
 )
 
-type msgServer struct {
-	*Keeper
-}
-
-// NewMsgServerImpl returns an implementation of the MsgServer interface
-// for the provided Keeper.
-func NewMsgServerImpl(keeper *Keeper) types.MsgServer {
-	return &msgServer{Keeper: keeper}
-}
-
-var _ types.MsgServer = msgServer{}
+var _ types.MsgServer = &Keeper{}
 
 // ApplyL1Txs implements types.MsgServer.
 func (k *Keeper) ApplyL1Txs(goCtx context.Context, msg *types.MsgApplyL1Txs) (*types.MsgApplyL1TxsResponse, error) {
@@ -28,8 +17,8 @@ func (k *Keeper) ApplyL1Txs(goCtx context.Context, msg *types.MsgApplyL1Txs) (*t
 
 	ctx.Logger().Debug("Processing L1 txs", "txCount", len(msg.TxBytes))
 
-	// process L1 system deposit tx and get L1 block info
-	l1blockInfo, err := k.processL1SystemDepositTx(ctx, msg.TxBytes[0])
+	// process L1 attributes tx and get L1 block info
+	l1blockInfo, err := k.processL1AttributesTx(ctx, msg.TxBytes[0])
 	if err != nil {
 		ctx.Logger().Error("Failed to process L1 system deposit tx", "err", err)
 		return nil, types.WrapError(types.ErrProcessL1SystemDepositTx, "err: %v", err)
@@ -41,21 +30,16 @@ func (k *Keeper) ApplyL1Txs(goCtx context.Context, msg *types.MsgApplyL1Txs) (*t
 		return nil, types.WrapError(types.ErrL1BlockInfo, "save error: %v", err)
 	}
 
-	ctx.Logger().Info("Save L1 block info", "l1blockInfo", string(lo.Must(json.Marshal(l1blockInfo))))
-
-	// save L1 block History to AppState
-	if err = k.setL1BlockHistory(&ctx, l1blockInfo); err != nil {
-		ctx.Logger().Error("Failed to save L1 block history info to AppState", "err", err)
-		return nil, types.WrapError(types.ErrL1BlockInfo, "save error: %v", err)
-	}
-
-	ctx.Logger().Info("Save L1 block history info", "l1blockHistoryInfo", string(lo.Must(json.Marshal(l1blockInfo))))
+	ctx.Logger().Info("Save L1 block info", "l1blockInfo", string(lo.Must(l1blockInfo.Marshal())))
 
 	// process L1 user deposit txs
-	if err = k.processL1UserDepositTxs(ctx, msg.TxBytes); err != nil {
+	mintEvents, err := k.processL1UserDepositTxs(ctx, msg.TxBytes, l1blockInfo)
+	if err != nil {
 		ctx.Logger().Error("Failed to process L1 user deposit txs", "err", err)
 		return nil, types.WrapError(types.ErrProcessL1UserDepositTxs, "err: %v", err)
 	}
+
+	k.EmitEvents(goCtx, mintEvents)
 
 	return &types.MsgApplyL1TxsResponse{}, nil
 }
@@ -73,17 +57,13 @@ func (k *Keeper) InitiateWithdrawal(
 		return nil, types.WrapError(types.ErrInvalidSender, "failed to create cosmos address for sender: %v; error: %v", msg.Sender, err)
 	}
 
-	if err := k.burnETH(ctx, cosmAddr, msg.Value); err != nil {
+	if err = k.burnETH(ctx, cosmAddr, msg.Value); err != nil {
 		ctx.Logger().Error("Failed to burn ETH", "cosmosAddress", cosmAddr, "evmAddress", msg.Target, "err", err)
 		return nil, types.WrapError(types.ErrBurnETH, "failed to burn ETH for cosmosAddress: %v; err: %v", cosmAddr, err)
 	}
 
 	withdrawalValueHex := hexutil.Encode(msg.Value.BigInt().Bytes())
-	ctx.EventManager().EmitEvents(sdk.Events{
-		sdk.NewEvent(
-			sdk.EventTypeMessage,
-			sdk.NewAttribute(sdk.AttributeKeyModule, types.ModuleName),
-		),
+	k.EmitEvents(ctx, sdk.Events{
 		sdk.NewEvent(
 			types.EventTypeWithdrawalInitiated,
 			sdk.NewAttribute(types.AttributeKeySender, msg.Sender),

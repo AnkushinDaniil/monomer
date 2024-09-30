@@ -34,6 +34,7 @@ const config: Config = {
       'classic',
       {
         docs: {
+          routeBasePath: '/',
           sidebarPath: './sidebars.ts',
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
@@ -76,15 +77,6 @@ const config: Config = {
       style: 'dark',
       links: [
         {
-          title: 'Docs',
-          items: [
-            {
-              label: 'Tutorial',
-              to: '/docs/intro',
-            },
-          ],
-        },
-        {
           title: 'Community',
           items: [
             {
@@ -98,6 +90,10 @@ const config: Config = {
             {
               label: 'Nethermind',
               href: 'https://nethermind.io',
+            },
+            {
+              label: 'Discord',
+              href: 'https://discord.gg/w9dhEEKh',
             }
           ],
         },

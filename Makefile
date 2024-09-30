@@ -2,6 +2,8 @@ GOBIN ?= $$(go env GOPATH)/bin
 COVER_OUT ?= cover.out
 COVER_HTML ?= cover.html
 SCRIPTS_PATH ?= scripts
+BIN ?= bin
+GO_WRAPPER ?= $(SCRIPTS_PATH)/go-wrapper.sh
 
 E2E_ARTIFACTS_PATH ?= e2e/artifacts
 E2E_STATE_SETUP_PATH ?= e2e/optimism/.devnet
@@ -9,17 +11,25 @@ E2E_CONFIG_SETUP_PATH ?= e2e/optimism/packages/contracts-bedrock/deploy-config/d
 FOUNDRY_ARTIFACTS_PATH ?= bindings/artifacts
 FOUNDRY_CACHE_PATH ?= bindings/cache
 
+.PHONY: monogen
+monogen:
+	go build -o $(BIN)/monogen ./monogen/cmd
+
 .PHONY: test
 test:
-	go test -short ./...
+	$(GO_WRAPPER) test -short ./...
 
 .PHONY: test-all
 test-all:
-	go test ./...
+	$(GO_WRAPPER) test ./...
 
 .PHONY: e2e
 e2e:
-	go test -v ./e2e
+	$(GO_WRAPPER) test -v ./e2e \
+	-l1-allocs ./optimism/.devnet/allocs-l1.json \
+	-l2-allocs-dir ./optimism/.devnet/ \
+	-l1-deployments ./optimism/.devnet/addresses.json \
+	-deploy-config ./optimism/packages/contracts-bedrock/deploy-config/devnetL1.json
 
 .PHONY: install-golangci-lint
 install-golangci-lint:
@@ -51,6 +61,10 @@ install-go-test-coverage:
 install-abi-gen:
 	go install github.com/ethereum/go-ethereum/cmd/abigen@v1.10.25
 
+.PHONY: install-mockgen
+install-mockgen:
+	go install go.uber.org/mock/mockgen@v0.4.0
+
 .PHONY: install-foundry
 install-foundry:
 	${SCRIPTS_PATH}/install-foundry.sh
@@ -59,8 +73,12 @@ install-foundry:
 gen-bindings:
 	${SCRIPTS_PATH}/generate-bindings.sh
 
+.PHONY: gen-mocks
+gen-mocks:
+	mockgen -source=x/rollup/types/expected_keepers.go -package testutil -destination x/rollup/testutil/expected_keepers_mocks.go
+
 $(COVER_OUT):
-	go test -short ./... -coverprofile=$@ -covermode=atomic -coverpkg=./...
+	$(GO_WRAPPER) test -short ./... -coverprofile=$@ -covermode=atomic -coverpkg=./...
 
 .PHONY: check-cover
 check-cover: $(COVER_OUT)
@@ -78,6 +96,7 @@ clean:
 	if [ -f $(E2E_CONFIG_SETUP_PATH) ]; then rm $(E2E_CONFIG_SETUP_PATH); fi
 	if [ -d ${FOUNDRY_ARTIFACTS_PATH} ]; then rm -r ${FOUNDRY_ARTIFACTS_PATH}; fi
 	if [ -d ${FOUNDRY_CACHE_PATH} ]; then rm -r ${FOUNDRY_CACHE_PATH}; fi
+	if [ -d $(BIN) ]; then rm -r $(BIN); fi
 
 .PHONY: setup-e2e
 setup-e2e:
